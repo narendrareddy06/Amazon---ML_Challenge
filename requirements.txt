@@ -1,0 +1,7 @@
+﻿# ML Challenge 2026 — V1 Baseline requirements
+# Standard-library only; nothing extra to install.
+# Python >= 3.8 required.
+
+# If you want to run the optional TF-IDF or fuzzy-match extensions, uncomment:
+# rapidfuzz>=3.0
+# scikit-learn>=1.3
