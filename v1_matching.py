@@ -29,7 +29,16 @@ W_NAME   = 0.60
 W_ADDR   = 0.25
 W_TOKENS = 0.15
 
-MAX_CANDIDATES = 500  # cap per S1 to bound memory/time
+MAX_CANDIDATES  = 200   # cap per S1 entity
+MAX_BLOCK_SIZE  = 200   # skip adding to a block if it already has this many — avoids hot blocks
+
+# Tokens that are too common to be useful blocking keys (legal suffixes, generic words)
+BLOCK_STOPWORDS = {
+    "inc", "corp", "ltd", "llc", "llp", "pvt", "pvtltd", "pteltd", "coltd",
+    "co", "company", "group", "enterprises", "services", "solutions", "technologies",
+    "tech", "international", "national", "the", "and", "of", "for",
+    "india", "us", "usa", "delhi", "new", "old", "city",
+}
 
 LEGAL_SUBS = [
     (r"\bincorporated\b", "inc"),
@@ -153,26 +162,40 @@ def score_pair(s1_rec, cand_rec):
 # ---------------------------------------------------------------------------
 
 def make_block_keys(norm_name, norm_addr, country):
+    """Generate blocking keys. Skips high-frequency generic tokens."""
     ctry = country.strip().lower()[:10]
     keys = set()
+
+    # Name tokens (skip block stopwords — they create huge hot blocks)
     for tok in tokens(norm_name):
-        if len(tok) >= 3:
+        if len(tok) >= 3 and tok not in BLOCK_STOPWORDS:
             keys.add(f"{ctry}|{tok}")
+
+    # Address: street number is highly specific, use it
     addr_toks = tokens(norm_addr)
     if addr_toks:
-        num_toks = [t for t in addr_toks if t[:1].isdigit()]
+        num_toks = [t for t in addr_toks if t[:1].isdigit() and len(t) >= 2]
         if num_toks:
             keys.add(f"{ctry}|num|{num_toks[0]}")
         else:
-            first = sorted(addr_toks)[0]
-            if len(first) >= 4:
-                keys.add(f"{ctry}|addr|{first}")
+            # Use longest non-numeric address token (most specific)
+            non_num = [t for t in addr_toks if not t[:1].isdigit() and len(t) >= 5
+                       and t not in BLOCK_STOPWORDS]
+            if non_num:
+                keys.add(f"{ctry}|addr|{max(non_num, key=len)}")
+
     return list(keys)
 
 
 def build_index(source_paths):
-    index = defaultdict(list)
+    """
+    Build inverted blocking index with a per-block size cap.
+    Blocks that exceed MAX_BLOCK_SIZE are marked as 'hot' and ignored during lookup.
+    """
+    index      = defaultdict(list)
+    hot_blocks = set()   # blocks too large to be useful
     total = 0
+
     for path in source_paths:
         print(f"  Indexing {path} ...", flush=True)
         with open(path, encoding="utf-8", newline="") as f:
@@ -185,11 +208,21 @@ def build_index(source_paths):
                     "_norm_addr":  normalize_address(row.get("business_address", "")),
                 }
                 for k in make_block_keys(rec["_norm_name"], rec["_norm_addr"], rec["country"]):
+                    if k in hot_blocks:
+                        continue
                     index[k].append(rec)
+                    if len(index[k]) > MAX_BLOCK_SIZE:
+                        hot_blocks.add(k)
+                        # Free the memory for this oversized block
+                        del index[k]
                 total += 1
                 if total % 500_000 == 0:
-                    print(f"    ... {total:,} records indexed", flush=True)
-    print(f"  Index built: {total:,} records, {len(index):,} blocks", flush=True)
+                    print(f"    ... {total:,} records indexed  "
+                          f"({len(index):,} blocks, {len(hot_blocks):,} hot/pruned)",
+                          flush=True)
+
+    print(f"  Index built: {total:,} records, {len(index):,} active blocks, "
+          f"{len(hot_blocks):,} hot blocks pruned", flush=True)
     return index
 
 
@@ -347,7 +380,7 @@ def run_pipeline(s1_path, s2_s3_paths, output_match, output_cand, threshold):
             n_matched += 1
         else:
             n_empty += 1
-        if n_s1 % 100_000 == 0:
+        if n_s1 % 50_000 == 0:
             print(f"  ... {n_s1:,} processed  matched={n_matched:,}  singletons={n_empty:,}",
                   flush=True)
 
