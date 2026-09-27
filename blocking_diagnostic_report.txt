@@ -1,0 +1,147 @@
+===========================================================================
+               CANDIDATE BLOCKING RECALL REPORT (TRAIN DATA)
+===========================================================================
+Total S1 Entities Processed         : 2,206,821
+S1 Entities with True Matches       : 2,083,574
+Total True Ground-Truth Pairs       : 7,638,365
+  - S2 True Pairs                   : 3,693,619
+  - S3 True Pairs                   : 3,944,746
+---------------------------------------------------------------------------
+Overall Candidate Recall (Micro)    : 38.60% (2,948,143 / 7,638,365)
+Overall Candidate Recall (Macro)    : 38.63%
+S2 Candidate Recall                 : 38.91% (1,437,010 / 3,693,619)
+S3 Candidate Recall                 : 38.31% (1,511,133 / 3,944,746)
+Total True Matches Missed by Index  : 4,690,222 (61.40%)
+  - Missed S2 Matches               : 2,256,609 (61.09%)
+  - Missed S3 Matches               : 2,433,613 (61.69%)
+---------------------------------------------------------------------------
+Miss Reason Breakdown:
+  - pruned_hot_key              : 4,651,536 (99.2%)
+  - max_cand_truncated          : 34,857 (0.7%)
+  - zero_key_overlap_or_other   : 3,829 (0.1%)
+===========================================================================
+
+Sample Missed True Matches:
+---------------------------------------------------------------------------
+Example #1:
+  S1 ID          : S1-773889195 (US)
+  S1 Name        : Prime Money
+  S1 Address     : 17560 Ellis Road, Tahlequah, OK
+  S1 Block Keys  : ['us|num|17560', 'us|money', 'us|prime']
+  Missed Target  : S2-374107005 (US)
+  Target Name    : Prime Money
+  Target Address : TAHLEQUAH, OK, 0017560 ELLIS RD
+  Target Keys    : ['us|money', 'us|prime', 'us|num|0017560']
+  Shared Keys    : ['us|money', 'us|prime']
+  Cands Found    : 28 (cap=200)
+---------------------------------------------------------------------------
+Example #2:
+  S1 ID          : S1-773889195 (US)
+  S1 Name        : Prime Money
+  S1 Address     : 17560 Ellis Road, Tahlequah, OK
+  S1 Block Keys  : ['us|num|17560', 'us|money', 'us|prime']
+  Missed Target  : S2-970528089 (US)
+  Target Name    : @primemoney
+  Target Address : TAHLEQUAH, OK, 0017560 ELLIS ROAD
+  Target Keys    : ['us|num|0017560', 'us|primemoney']
+  Shared Keys    : NONE
+  Cands Found    : 28 (cap=200)
+---------------------------------------------------------------------------
+Example #3:
+  S1 ID          : S1-377745466 (US)
+  S1 Name        : B+ Retail Inc
+  S1 Address     : 1712 Montebello Avenue, Phoenix, AZ
+  S1 Block Keys  : ['us|retail', 'us|num|1712']
+  Missed Target  : S3-70942743 (US)
+  Target Name    : B+ Inc Services
+  Target Address : Arizona, Phoenix, 1712 Montebello Avenue
+  Target Keys    : ['us|num|1712']
+  Shared Keys    : ['us|num|1712']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #4:
+  S1 ID          : S1-377745466 (US)
+  S1 Name        : B+ Retail Inc
+  S1 Address     : 1712 Montebello Avenue, Phoenix, AZ
+  S1 Block Keys  : ['us|retail', 'us|num|1712']
+  Missed Target  : S3-836170816 (US)
+  Target Name    : B+ Retail INC (ID: 84923)
+  Target Address : 1712 Montebello Avenue, Phoenix, Arizona
+  Target Keys    : ['us|retail', 'us|84923', 'us|num|1712']
+  Shared Keys    : ['us|retail', 'us|num|1712']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #5:
+  S1 ID          : S1-377745466 (US)
+  S1 Name        : B+ Retail Inc
+  S1 Address     : 1712 Montebello Avenue, Phoenix, AZ
+  S1 Block Keys  : ['us|retail', 'us|num|1712']
+  Missed Target  : S3-402918963 (US)
+  Target Name    : B+ Rétail Incorporated
+  Target Address : 1712 Montebello Ave, Northeast, Arizona
+  Target Keys    : ['us|num|1712', 'us|rétail']
+  Shared Keys    : ['us|num|1712']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #6:
+  S1 ID          : S1-377745466 (US)
+  S1 Name        : B+ Retail Inc
+  S1 Address     : 1712 Montebello Avenue, Phoenix, AZ
+  S1 Block Keys  : ['us|retail', 'us|num|1712']
+  Missed Target  : S2-203037501 (US)
+  Target Name    : B+ Retail
+  Target Address : PHOENIX, AZ, 1712 MONTEBELLO AVE
+  Target Keys    : ['us|retail', 'us|num|1712']
+  Shared Keys    : ['us|retail', 'us|num|1712']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #7:
+  S1 ID          : S1-133037285 (US)
+  S1 Name        : Christ Chapel
+  S1 Address     : 2100 Cameron Drive, Unit APARTMENT G, Dundalk, MD
+  S1 Block Keys  : ['us|num|2100', 'us|christ', 'us|chapel']
+  Missed Target  : S3-476003339 (US)
+  Target Name    : CHRIST CHAPEL
+  Target Address : 210 Cameron Drive, Dundalk, Maryland
+  Target Keys    : ['us|christ', 'us|chapel', 'us|num|210']
+  Shared Keys    : ['us|christ', 'us|chapel']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #8:
+  S1 ID          : S1-133037285 (US)
+  S1 Name        : Christ Chapel
+  S1 Address     : 2100 Cameron Drive, Unit APARTMENT G, Dundalk, MD
+  S1 Block Keys  : ['us|num|2100', 'us|christ', 'us|chapel']
+  Missed Target  : S2-407207105 (US)
+  Target Name    : Christ [Chape1]
+  Target Address : 2100 CAMERON DR, DUNDALK, MD
+  Target Keys    : ['us|num|2100', 'us|chape1', 'us|christ']
+  Shared Keys    : ['us|num|2100', 'us|christ']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #9:
+  S1 ID          : S1-133037285 (US)
+  S1 Name        : Christ Chapel
+  S1 Address     : 2100 Cameron Drive, Unit APARTMENT G, Dundalk, MD
+  S1 Block Keys  : ['us|num|2100', 'us|christ', 'us|chapel']
+  Missed Target  : S3-940895145 (US)
+  Target Name    : Christ Chapel
+  Target Address : # Apartment G, Dundalk, 210 Cameron Drive, Maryland
+  Target Keys    : ['us|christ', 'us|chapel', 'us|num|210']
+  Shared Keys    : ['us|christ', 'us|chapel']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+Example #10:
+  S1 ID          : S1-133037285 (US)
+  S1 Name        : Christ Chapel
+  S1 Address     : 2100 Cameron Drive, Unit APARTMENT G, Dundalk, MD
+  S1 Block Keys  : ['us|num|2100', 'us|christ', 'us|chapel']
+  Missed Target  : S3-33144658 (US)
+  Target Name    : Christ Center
+  Target Address : 210 Cameron Dr, # Apartment G, Dundalk, Maryland
+  Target Keys    : ['us|center', 'us|christ', 'us|num|210']
+  Shared Keys    : ['us|christ']
+  Cands Found    : 0 (cap=200)
+---------------------------------------------------------------------------
+
+Diagnostic finished in 1477.7s (24.63 mins).

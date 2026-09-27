@@ -2,7 +2,7 @@
 """
 diagnose_blocking.py -- Amazon ML Challenge 2026 Diagnostic Script
 Evaluates candidate recall on TRAINING data using the exact V1 blocking strategy.
-Optimized for <= 8GB RAM, no similarity scoring, pure blocking diagnostic.
+Optimized for <= 8GB RAM, fast I/O, no similarity scoring, pure blocking diagnostic.
 """
 
 import csv
@@ -11,7 +11,7 @@ import sys
 import time
 from collections import defaultdict
 
-# Import normalization & blocking definitions from v1_matching without modifying it
+# Exact logic from v1_matching without modifying v1_matching.py
 from v1_matching import (
     BLOCK_STOPWORDS,
     MAX_BLOCK_SIZE,
@@ -26,22 +26,29 @@ GT_PATH = os.path.join(DATA_DIR, "train_ground_truth.tsv")
 S1_PATH = os.path.join(DATA_DIR, "train_source1.tsv")
 S2_PATH = os.path.join(DATA_DIR, "train_source2.tsv")
 S3_PATH = os.path.join(DATA_DIR, "train_source3.tsv")
+REPORT_PATH = os.path.join(os.path.dirname(__file__), "blocking_diagnostic_report.txt")
 
 
 def load_ground_truth(path):
     print(f"Loading ground truth from {path} ...", flush=True)
     gt = {}
     total_true_pairs = 0
-    with open(path, encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f, delimiter="\t")
+        header = next(reader)
+        idx_s1 = header.index("source1_entity_id")
+        idx_match = header.index("matched_entity_ids")
         for row in reader:
-            ids_str = row["matched_entity_ids"].strip()
+            if not row:
+                continue
+            s1_id = row[idx_s1]
+            ids_str = row[idx_match].strip()
             if ids_str:
                 matches = set(ids_str.split(","))
-                gt[row["source1_entity_id"]] = matches
+                gt[s1_id] = matches
                 total_true_pairs += len(matches)
             else:
-                gt[row["source1_entity_id"]] = set()
+                gt[s1_id] = set()
     print(f"  Loaded {len(gt):,} S1 entities ({total_true_pairs:,} total ground-truth matches)", flush=True)
     return gt
 
@@ -54,14 +61,23 @@ def build_blocking_index(source_paths):
 
     t0 = time.time()
     for path in source_paths:
-        print(f"  Indexing {os.path.basename(path)} ...", flush=True)
-        with open(path, encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f, delimiter="\t")
+        fname = os.path.basename(path)
+        print(f"  Indexing {fname} ...", flush=True)
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f, delimiter="\t")
+            header = next(reader)
+            idx_id = header.index("entity_id")
+            idx_name = header.index("business_name")
+            idx_addr = header.index("business_address")
+            idx_ctry = header.index("country")
+
             for row in reader:
-                eid = row["entity_id"]
-                norm_name = normalize_name(row.get("business_name", ""))
-                norm_addr = normalize_address(row.get("business_address", ""))
-                country = row.get("country", "")
+                if not row:
+                    continue
+                eid = row[idx_id]
+                norm_name = normalize_name(row[idx_name])
+                norm_addr = normalize_address(row[idx_addr])
+                country = row[idx_ctry]
 
                 keys = make_block_keys(norm_name, norm_addr, country)
                 for k in keys:
@@ -87,10 +103,12 @@ def get_candidates(norm_name, norm_addr, country, index):
     keys = make_block_keys(norm_name, norm_addr, country)
     seen_cands = set()
     for k in keys:
-        for eid in index.get(k, []):
-            seen_cands.add(eid)
-            if len(seen_cands) >= MAX_CANDIDATES:
-                break
+        block = index.get(k)
+        if block:
+            for eid in block:
+                seen_cands.add(eid)
+                if len(seen_cands) >= MAX_CANDIDATES:
+                    break
     return seen_cands, keys
 
 
@@ -104,7 +122,7 @@ def diagnose():
     index, hot_blocks = build_blocking_index([S2_PATH, S3_PATH])
 
     # 3. Evaluate candidate recall on S1
-    print(f"\nEvaluating candidate recall on {S1_PATH} ...", flush=True)
+    print(f"\nEvaluating candidate recall on {os.path.basename(S1_PATH)} ...", flush=True)
 
     total_true = 0
     total_captured = 0
@@ -122,21 +140,29 @@ def diagnose():
 
     # Reason breakdown for misses
     miss_reasons = {
-        "pruned_hot_key": 0,    # S1 had a key that became hot, and no other key matched
+        "pruned_hot_key": 0,    # S1 had a key that was pruned as hot, and no other key matched
         "max_cand_truncated": 0, # S1 hit MAX_CANDIDATES cap
         "zero_key_overlap_or_other": 0,
     }
 
     t0 = time.time()
-    with open(S1_PATH, encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
+    with open(S1_PATH, "r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f, delimiter="\t")
+        header = next(reader)
+        idx_id = header.index("entity_id")
+        idx_name = header.index("business_name")
+        idx_addr = header.index("business_address")
+        idx_ctry = header.index("country")
+
         for row in reader:
-            s1_id = row["entity_id"]
+            if not row:
+                continue
+            s1_id = row[idx_id]
             true_set = gt.get(s1_id, set())
 
-            norm_name = normalize_name(row.get("business_name", ""))
-            norm_addr = normalize_address(row.get("business_address", ""))
-            country = row.get("country", "")
+            norm_name = normalize_name(row[idx_name])
+            norm_addr = normalize_address(row[idx_addr])
+            country = row[idx_ctry]
 
             cands, s1_keys = get_candidates(norm_name, norm_addr, country, index)
 
@@ -175,8 +201,8 @@ def diagnose():
                         if len(missed_examples) < MAX_MISSED_EXAMPLES:
                             missed_examples.append({
                                 "s1_id": s1_id,
-                                "s1_name": row.get("business_name", ""),
-                                "s1_addr": row.get("business_address", ""),
+                                "s1_name": row[idx_name],
+                                "s1_addr": row[idx_addr],
                                 "s1_country": country,
                                 "s1_keys": s1_keys,
                                 "missed_eid": true_id,
@@ -188,23 +214,30 @@ def diagnose():
                 cur_recall = (total_captured / total_true * 100) if total_true else 0.0
                 print(f"  ... {entities_total:,} S1 processed | Current Recall: {cur_recall:.2f}% ({total_captured:,}/{total_true:,}) [{elapsed:.1f}s]", flush=True)
 
-    # Fetch ground truth raw details for missed examples to provide rich context
+    # Fetch ground truth raw details for missed examples
     missed_target_ids = {ex["missed_eid"] for ex in missed_examples}
     missed_details = {}
     if missed_target_ids:
         print("\nFetching raw records for missed examples...", flush=True)
         for path in [S2_PATH, S3_PATH]:
-            with open(path, encoding="utf-8", newline="") as f:
-                reader = csv.DictReader(f, delimiter="\t")
+            with open(path, "r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f, delimiter="\t")
+                header = next(reader)
+                idx_id = header.index("entity_id")
+                idx_name = header.index("business_name")
+                idx_addr = header.index("business_address")
+                idx_ctry = header.index("country")
                 for row in reader:
-                    eid = row["entity_id"]
+                    if not row:
+                        continue
+                    eid = row[idx_id]
                     if eid in missed_target_ids:
-                        norm_name = normalize_name(row.get("business_name", ""))
-                        norm_addr = normalize_address(row.get("business_address", ""))
-                        country = row.get("country", "")
+                        norm_name = normalize_name(row[idx_name])
+                        norm_addr = normalize_address(row[idx_addr])
+                        country = row[idx_ctry]
                         missed_details[eid] = {
-                            "name": row.get("business_name", ""),
-                            "addr": row.get("business_address", ""),
+                            "name": row[idx_name],
+                            "addr": row[idx_addr],
                             "country": country,
                             "keys": make_block_keys(norm_name, norm_addr, country),
                         }
@@ -216,49 +249,59 @@ def diagnose():
     macro_recall = (macro_recall_sum / entities_with_matches * 100) if entities_with_matches else 0.0
     missed_total = total_true - total_captured
 
-    print("\n" + "="*70)
-    print("                 CANDIDATE BLOCKING RECALL REPORT")
-    print("="*70)
-    print(f"Total S1 Entities Processed   : {entities_total:,}")
-    print(f"S1 Entities with True Matches : {entities_with_matches:,}")
-    print(f"Total True Ground-Truth Pairs : {total_true:,}")
-    print(f"  - S2 True Pairs             : {s2_true:,}")
-    print(f"  - S3 True Pairs             : {s3_true:,}")
-    print("-" * 70)
-    print(f"Overall Candidate Recall (Pair-Level Micro) : {overall_recall:.2f}% ({total_captured:,} / {total_true:,})")
-    print(f"Overall Candidate Recall (Entity-Level Macro): {macro_recall:.2f}%")
-    print(f"S2 Candidate Recall                         : {s2_recall:.2f}% ({s2_captured:,} / {s2_true:,})")
-    print(f"S3 Candidate Recall                         : {s3_recall:.2f}% ({s3_captured:,} / {s3_true:,})")
-    print(f"Total True Matches Missed by Blocking       : {missed_total:,} ({(missed_total / total_true * 100):.2f}%)")
-    print("-" * 70)
-    print("Miss Reason Breakdown:")
+    report_lines = []
+    report_lines.append("=" * 75)
+    report_lines.append("               CANDIDATE BLOCKING RECALL REPORT (TRAIN DATA)")
+    report_lines.append("=" * 75)
+    report_lines.append(f"Total S1 Entities Processed         : {entities_total:,}")
+    report_lines.append(f"S1 Entities with True Matches       : {entities_with_matches:,}")
+    report_lines.append(f"Total True Ground-Truth Pairs       : {total_true:,}")
+    report_lines.append(f"  - S2 True Pairs                   : {s2_true:,}")
+    report_lines.append(f"  - S3 True Pairs                   : {s3_true:,}")
+    report_lines.append("-" * 75)
+    report_lines.append(f"Overall Candidate Recall (Micro)    : {overall_recall:.2f}% ({total_captured:,} / {total_true:,})")
+    report_lines.append(f"Overall Candidate Recall (Macro)    : {macro_recall:.2f}%")
+    report_lines.append(f"S2 Candidate Recall                 : {s2_recall:.2f}% ({s2_captured:,} / {s2_true:,})")
+    report_lines.append(f"S3 Candidate Recall                 : {s3_recall:.2f}% ({s3_captured:,} / {s3_true:,})")
+    report_lines.append(f"Total True Matches Missed by Index  : {missed_total:,} ({(missed_total / total_true * 100):.2f}%)")
+    report_lines.append(f"  - Missed S2 Matches               : {(s2_true - s2_captured):,} ({((s2_true - s2_captured) / s2_true * 100 if s2_true else 0):.2f}%)")
+    report_lines.append(f"  - Missed S3 Matches               : {(s3_true - s3_captured):,} ({((s3_true - s3_captured) / s3_true * 100 if s3_true else 0):.2f}%)")
+    report_lines.append("-" * 75)
+    report_lines.append("Miss Reason Breakdown:")
     for reason, count in miss_reasons.items():
         pct = (count / missed_total * 100) if missed_total else 0.0
-        print(f"  - {reason:<26}: {count:,} ({pct:.1f}%)")
-    print("="*70)
+        report_lines.append(f"  - {reason:<28}: {count:,} ({pct:.1f}%)")
+    report_lines.append("=" * 75)
 
-    print("\nSample Missed True Matches:")
-    print("-" * 70)
+    report_lines.append("\nSample Missed True Matches:")
+    report_lines.append("-" * 75)
     for i, ex in enumerate(missed_examples, 1):
         target_info = missed_details.get(ex["missed_eid"], {})
         target_keys = target_info.get("keys", [])
         shared_keys = set(ex["s1_keys"]) & set(target_keys)
 
-        print(f"Example #{i}:")
-        print(f"  S1 ID          : {ex['s1_id']} ({ex['s1_country']})")
-        print(f"  S1 Name        : {ex['s1_name']}")
-        print(f"  S1 Address     : {ex['s1_addr']}")
-        print(f"  S1 Block Keys  : {ex['s1_keys']}")
-        print(f"  Missed Target  : {ex['missed_eid']} ({target_info.get('country', '')})")
-        print(f"  Target Name    : {target_info.get('name', '')}")
-        print(f"  Target Address : {target_info.get('addr', '')}")
-        print(f"  Target Keys    : {target_keys}")
-        print(f"  Shared Keys    : {list(shared_keys) if shared_keys else 'NONE'}")
-        print(f"  Cands Found    : {ex['candidate_count']} (cap={MAX_CANDIDATES})")
-        print("-" * 70)
+        report_lines.append(f"Example #{i}:")
+        report_lines.append(f"  S1 ID          : {ex['s1_id']} ({ex['s1_country']})")
+        report_lines.append(f"  S1 Name        : {ex['s1_name']}")
+        report_lines.append(f"  S1 Address     : {ex['s1_addr']}")
+        report_lines.append(f"  S1 Block Keys  : {ex['s1_keys']}")
+        report_lines.append(f"  Missed Target  : {ex['missed_eid']} ({target_info.get('country', '')})")
+        report_lines.append(f"  Target Name    : {target_info.get('name', '')}")
+        report_lines.append(f"  Target Address : {target_info.get('addr', '')}")
+        report_lines.append(f"  Target Keys    : {target_keys}")
+        report_lines.append(f"  Shared Keys    : {list(shared_keys) if shared_keys else 'NONE'}")
+        report_lines.append(f"  Cands Found    : {ex['candidate_count']} (cap={MAX_CANDIDATES})")
+        report_lines.append("-" * 75)
 
     total_time = time.time() - t_start
-    print(f"\nDiagnostic finished in {total_time:.1f}s ({total_time/60:.2f} mins).")
+    report_lines.append(f"\nDiagnostic finished in {total_time:.1f}s ({total_time/60:.2f} mins).")
+
+    report_text = "\n".join(report_lines)
+    print("\n" + report_text, flush=True)
+
+    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+        f.write(report_text)
+    print(f"\nSaved report to {REPORT_PATH}", flush=True)
 
 
 if __name__ == "__main__":
